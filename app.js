@@ -77,6 +77,9 @@ let targetScrollTop = null;
 // PiP 状态
 let pipWindow = null;
 
+// 屏幕常亮 (Wake Lock) 状态
+let wakeLockSentinel = null;
+
 // ---------------- DOM 引用 ----------------
 const $ = (id) => document.getElementById(id);
 
@@ -340,11 +343,12 @@ function updateHighlight(cursorTokenIdx, instantScroll = false) {
   const pct = Math.round(matcher.getProgress() * 100);
   els.progressText.textContent = `${pct}%`;
 
-  // 计算目标滚动位置，使当前高亮字对齐视线引导线（距顶部约 28%）
+  // 计算目标滚动位置，使当前高亮字对齐视线引导线（移动端更贴近顶部前置镜头）
   const anchorEl = charElements[rawCursor] || charElements.find((e, idx) => idx >= rawCursor && e);
   if (anchorEl) {
     const viewport = els.scriptViewport;
-    const focusY = viewport.clientHeight * 0.28;
+    const isMobile = window.matchMedia('(max-width: 720px)').matches;
+    const focusY = viewport.clientHeight * (isMobile ? 0.20 : 0.28);
     const desiredTop = Math.max(0, anchorEl.offsetTop - focusY);
     if (instantScroll || !isRunning) {
       viewport.scrollTo({
@@ -356,6 +360,36 @@ function updateHighlight(cursorTokenIdx, instantScroll = false) {
       targetScrollTop = desiredTop;
     }
   }
+}
+
+// ---------------- 屏幕常亮 (Wake Lock) ----------------
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    if (wakeLockSentinel) return;
+    wakeLockSentinel = await navigator.wakeLock.request('screen');
+    wakeLockSentinel.addEventListener('release', () => {
+      wakeLockSentinel = null;
+    });
+  } catch (_) {
+    // 低电量模式或系统策略拒绝时静默忽略
+  }
+}
+
+async function releaseWakeLock() {
+  if (!wakeLockSentinel) return;
+  try {
+    await wakeLockSentinel.release();
+  } catch (_) {}
+  wakeLockSentinel = null;
+}
+
+function isIOSStandalone() {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = window.navigator.standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches;
+  return isIOS && standalone;
 }
 
 // ---------------- 运行与模式控制 ----------------
@@ -406,6 +440,7 @@ async function startRunning() {
     setTranscript(`匀速滚动中（${settings.scrollSpeed} px/s），按 ↑/↓ 可调速`);
   }
 
+  requestWakeLock();
   lastFrameTime = performance.now();
   startAnimationLoop();
 }
@@ -418,6 +453,7 @@ function stopRunning() {
   stopSpeechRecognition();
   stopMicMeter();
   stopAnimationLoop();
+  releaseWakeLock();
 
   els.vuBar.style.width = '0%';
   setStatus('已暂停');
@@ -495,8 +531,12 @@ function startSpeechRecognition() {
     if (err === 'not-allowed' || err === 'service-not-allowed') {
       shouldRestartRecognition = false;
       stopRunning();
-      setStatus('麦克风被拒绝', 'warn');
-      showToast('请允许浏览器使用麦克风权限');
+      setStatus('语音识别受限', 'warn');
+      if (isIOSStandalone()) {
+        showToast('iPhone 主屏幕全屏模式下系统可能限制语音识别，请用 Safari 打开或切「声控滚动」', 4200);
+      } else {
+        showToast('请允许浏览器使用麦克风与语音识别权限');
+      }
       return;
     }
     if (err === 'network') {
@@ -980,9 +1020,17 @@ function init() {
   loadActiveCardIntoStage();
   bindEvents();
 
+  // 仅在支持 Document Picture-in-Picture 的桌面浏览器显示悬浮窗按钮
   if (!('documentPictureInPicture' in window)) {
-    els.btnPip.style.opacity = '0.55';
+    els.btnPip.classList.add('hidden');
   }
+
+  // 页面切回前台时自动恢复屏幕常亮
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && isRunning) {
+      requestWakeLock();
+    }
+  });
 }
 
 init();

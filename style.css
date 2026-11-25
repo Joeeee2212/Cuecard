@@ -796,6 +796,9 @@ input[type="range"] {
 
 /* 移动端响应式优化 */
 @media (max-width: 720px) {
+  :root {
+    --focus-offset: 20%;
+  }
   .topbar {
     flex-wrap: wrap;
     padding: 8px 10px;
@@ -819,6 +822,10 @@ input[type="range"] {
     padding: 0 16px;
   }
   .script-content {
-    padding-top: 18vh;
+    padding-top: 14vh;
   }
+}
+
+.hidden {
+  display: none !important;
 }
