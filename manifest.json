@@ -1,0 +1,9 @@
+{
+  "name": "CueCard Web - 中文智能提词器",
+  "short_name": "CueCard",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0b0c0f",
+  "theme_color": "#0b0c0f",
+  "description": "支持中文语音跟读、声控滚动与桌面悬浮置顶的轻量网页提词器"
+}
